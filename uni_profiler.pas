@@ -18,11 +18,14 @@
 // To use the profiler:
 // 1. connect this module to the profiled module
 // 2. to create a code block profile, place this calls on its edges
-//   uprof.Start('section name') // to start profiling
-//   ... profiled code here
-//   uprof.Stop                  // to end profiling
+//       uprof.Start('section name') // to start profiling
+//       ... profiled code here
+//       uprof.Stop                  // to end profiling
 // 3. save the accumulated statistics to an external file
-//   uprof.SaveToFile(path to file)
+//       uprof.SaveToFile(path to file)
+// 4. use THash returned by Start() function and GetProfileValue function to get current counter values.
+//    The counter values have an accuracy of 100 nanoseconds.
+//    To convert to seconds, divide this value by the Frequency parameter.
 
 unit uni_profiler;
 
@@ -81,6 +84,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    /// <summary>The method returns the description previously set when Start() was called.</summary>
+    function GetHashDescription(AHash: THash): string;
     /// <summary>The method returns the current counter values by the passed hash.</summary>
     function GetProfileValue(AHash: THash): TProfileValue;
     /// <summary>The function collects complete statistics on accumulated counter values and returns it in a formatted form.</summary>
@@ -172,6 +177,12 @@ asm
     mov rax, [rbp + $C8] // The offset depends on the implementation of TUniversalProfiler.Start
     {$ENDIF}
   {$ENDIF}
+end;
+
+function TUniversalProfiler.GetHashDescription(AHash: THash): string;
+begin
+  Result := '';
+  FValueDescriptions.TryGetValue(AHash, Result);
 end;
 
 function TUniversalProfiler.GetNow: Int64;
