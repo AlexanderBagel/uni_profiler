@@ -7,7 +7,7 @@
 //  *           : Supported operating systems: Windows/Linux.
 //  * Author    : Alexander (Rouse_) Bagel
 //  * Copyright : © Fangorn Wizards Lab 1998 - 2024.
-//  * Version   : 1.0
+//  * Version   : 1.1
 //  * Home Page : http://rouse.drkb.ru
 //  * Home Blog : http://alexander-bagel.blogspot.ru
 //  ****************************************************************************
@@ -144,7 +144,7 @@ begin
   {$IFDEF LINUX}
   FIsHighResolution := (clock_getres(CLOCK_MONOTONIC, @Measure) = 0) and (Measure.tv_nsec <> 0);
   if (Measure.tv_nsec <> 0) then
-     FFrequency := TicksPerSecond div Measure.tv_nsec;
+     FFrequency := TicksPerSecond div Measure.tv_nsec * 100; // 100 nanosecond
   {$ENDIF}
   FLock := TCriticalSection.Create;
   FValues := TDictionary<THash, TProfileValue>.Create;
