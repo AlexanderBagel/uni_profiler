@@ -38,7 +38,7 @@ end;
 
 begin
   try
-    uprof.MiltiThread := True;
+    uprof.MultiThread := True;
     TThread.CreateAnonymousThread(Test).Start;
     Test;
     Sleep(50);
