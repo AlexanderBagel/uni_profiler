@@ -78,7 +78,7 @@ type
     FSaveOnShutdown: Boolean;
     FValues: TDictionary<THash, TProfileValue>;
     FValueDescriptions: TDictionary<THash, string>;
-    FThreads: TObjectDictionary<Cardinal, TStack<TStackParam>>;
+    FThreads: TObjectDictionary<TThreadID, TStack<TStackParam>>;
     FFilePath: string;
     function GetCallHash: THash;
     function GetNow: Int64;
@@ -152,7 +152,7 @@ begin
   FLock := TCriticalSection.Create;
   FValues := TDictionary<THash, TProfileValue>.Create;
   FValueDescriptions := TDictionary<THash, string>.Create;
-  FThreads := TObjectDictionary<Cardinal, TStack<TStackParam>>.Create([doOwnsValues]);
+  FThreads := TObjectDictionary<TThreadID, TStack<TStackParam>>.Create([doOwnsValues]);
   FSaveOnShutdown := True;
   FMaxNameLen := 4;
 end;
@@ -316,7 +316,7 @@ function TUniversalProfiler.Start(const ASectionName: string): THash;
 var
   ProfileValue: TProfileValue;
   PresentSectionName: string;
-  ThreadID: Cardinal;
+  ThreadID: TThreadID;
   ThreadStack: TStack<TStackParam>;
   StackParam: TStackParam;
 begin
@@ -346,7 +346,7 @@ end;
 procedure TUniversalProfiler.Stop;
 var
   StopTime: Int64;
-  ThreadID: Cardinal;
+  ThreadID: TThreadID;
   ThreadStack: TStack<TStackParam>;
   StackParam: TStackParam;
   ProfileValue: TProfileValue;
