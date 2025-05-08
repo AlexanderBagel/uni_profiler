@@ -15,3 +15,9 @@ To use the profiler:
 4. use THash returned by Start() function and GetProfileValue function to get current counter values.  
    The counter values have an accuracy of 100 nanoseconds.  
    To convert to seconds, divide this value by the Frequency parameter.
+   
+### Appearance:
+
+Demo output:
+
+<img src="https://raw.githubusercontent.com/AlexanderBagel/uni_profiler/main/img/uni_profiler.png"/>   

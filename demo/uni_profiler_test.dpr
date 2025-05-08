@@ -1,13 +1,11 @@
 program uni_profiler_test;
 
-{$MODE Delphi}
+{$APPTYPE CONSOLE}
 
 uses
-  {$IFDEF LINUX}
-  cthreads,
-  {$ENDIF}
   SysUtils,
-  Unit1;
+  uni_profiler in '..\uni_profiler.pas',
+  Unit1 in 'Unit1.pas';
 
 begin
   try

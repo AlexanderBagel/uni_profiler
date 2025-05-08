@@ -5,9 +5,10 @@
 //  * Unit Name : uni_profiler.pas
 //  * Purpose   : Universal profiler for code profiling in Delphi and Lazarus.
 //  *           : Supported operating systems: Windows/Linux.
+//  *           : Supported CPUs: Intel x86_64, ARM (AARCH64)
 //  * Author    : Alexander (Rouse_) Bagel
-//  * Copyright : © Fangorn Wizards Lab 1998 - 2024.
-//  * Version   : 1.3
+//  * Copyright : © Fangorn Wizards Lab 1998 - 2025.
+//  * Version   : 1.4
 //  * Home Page : http://rouse.drkb.ru
 //  * Home Blog : http://alexander-bagel.blogspot.ru
 //  ****************************************************************************
@@ -31,7 +32,12 @@ unit uni_profiler;
 
 {$IFDEF FPC}
   {$MODE DELPHI}
-  {$ASMMODE INTEL}
+  {$IFDEF CPUX86}
+    {$ASMMODE INTEL}
+  {$ENDIF}
+  {$IFDEF CPUX64}
+    {$ASMMODE INTEL}
+  {$ENDIF}
 {$ENDIF}
 
 interface
@@ -80,8 +86,8 @@ type
     FValueDescriptions: TDictionary<THash, string>;
     FThreads: TObjectDictionary<TThreadID, TStack<TStackParam>>;
     FFilePath: string;
-    function GetCallHash: THash;
     function GetNow: Int64;
+    function InternalStart(const ASectionName: string; AHash: THash): THash;
   public
     constructor Create;
     destructor Destroy; override;
@@ -180,21 +186,6 @@ begin
   inherited;
 end;
 
-function TUniversalProfiler.GetCallHash: THash; assembler; {$IFDEF FPC}nostackframe;{$ENDIF}
-asm
-  {$IFDEF CPUX86}
-  mov eax, [ebp + 4]
-  {$ENDIF}
-  {$IFDEF CPUX64}
-    {$IFDEF FPC}
-    mov rax, [rbp + 8{%H-}]
-    {$ELSE}
-    .noframe
-    mov rax, [rbp + $C8] // The offset depends on the implementation of TUniversalProfiler.Start
-    {$ENDIF}
-  {$ENDIF}
-end;
-
 function TUniversalProfiler.GetHashDescription(AHash: THash): string;
 begin
   Result := '';
@@ -285,6 +276,38 @@ begin
   end;
 end;
 
+function TUniversalProfiler.InternalStart(const ASectionName: string;
+  AHash: THash): THash;
+var
+  ProfileValue: TProfileValue;
+  PresentSectionName: string;
+  ThreadID: TThreadID;
+  ThreadStack: TStack<TStackParam>;
+  StackParam: TStackParam;
+begin
+  if MultiThread then FLock.Enter;
+  try
+    FMaxNameLen := Max(FMaxNameLen, Length(ASectionName));
+    StackParam.Hash := AHash;
+    if not FValueDescriptions.TryGetValue(StackParam.Hash, PresentSectionName) then
+      FValueDescriptions.Add(StackParam.Hash, ASectionName);
+    ProfileValue := Default(TProfileValue);
+    if not FValues.TryGetValue(StackParam.Hash, ProfileValue) then
+      FValues.Add(StackParam.Hash, ProfileValue);
+    ThreadID := GetCurrentThreadId;
+    if not FThreads.TryGetValue(ThreadID, ThreadStack) then
+    begin
+      ThreadStack := TStack<TStackParam>.Create;
+      FThreads.Add(ThreadID, ThreadStack);
+    end;
+    Result := StackParam.Hash;
+    StackParam.StartTime := GetNow;
+    ThreadStack.Push(StackParam);
+  finally
+    if MultiThread then FLock.Leave;
+  end;
+end;
+
 procedure TUniversalProfiler.Reset;
 begin
   if MultiThread then FLock.Enter;
@@ -312,35 +335,30 @@ begin
   end;
 end;
 
-function TUniversalProfiler.Start(const ASectionName: string): THash;
-var
-  ProfileValue: TProfileValue;
-  PresentSectionName: string;
-  ThreadID: TThreadID;
-  ThreadStack: TStack<TStackParam>;
-  StackParam: TStackParam;
-begin
-  if MultiThread then FLock.Enter;
-  try
-    FMaxNameLen := Max(FMaxNameLen, Length(ASectionName));
-    StackParam.Hash := GetCallHash;
-    if not FValueDescriptions.TryGetValue(StackParam.Hash, PresentSectionName) then
-      FValueDescriptions.Add(StackParam.Hash, ASectionName);
-    ProfileValue := Default(TProfileValue);
-    if not FValues.TryGetValue(StackParam.Hash, ProfileValue) then
-      FValues.Add(StackParam.Hash, ProfileValue);
-    ThreadID := GetCurrentThreadId;
-    if not FThreads.TryGetValue(ThreadID, ThreadStack) then
-    begin
-      ThreadStack := TStack<TStackParam>.Create;
-      FThreads.Add(ThreadID, ThreadStack);
-    end;
-    Result := StackParam.Hash;
-    StackParam.StartTime := GetNow;
-    ThreadStack.Push(StackParam);
-  finally
-    if MultiThread then FLock.Leave;
-  end;
+function TUniversalProfiler.Start(const ASectionName: string): THash;  assembler; {$IFDEF FPC}nostackframe;{$ENDIF}
+asm
+  {$IFDEF CPUAARCH64}
+  mov x2, x30
+  b InternalStart
+  {$ENDIF}
+
+  {$IFDEF CPUX86}
+    mov ecx, [esp]
+    jmp InternalStart
+  {$ENDIF}
+
+  {$IFDEF CPUX64}
+    {$IFNDEF FPC}
+      .noframe
+    {$ENDIF}
+    {$IFDEF MSWINDOWS}
+      mov r8, [rsp]
+    {$ENDIF}
+    {$IFDEF LINUX}
+      mov rdx, [rsp]
+    {$ENDIF}
+    jmp InternalStart
+  {$ENDIF}
 end;
 
 procedure TUniversalProfiler.Stop;
