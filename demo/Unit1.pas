@@ -112,6 +112,9 @@ begin
   while ThreadCount > 0 do
     CheckSynchronize(10);
 
+  Writeln('Test1: ');
+  Writeln;
+
   // Showing a full report of all meters
   Report := uprof.GetResult;
   try

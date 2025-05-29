@@ -8,7 +8,7 @@
 //  *           : Supported CPUs: Intel x86_64, ARM (AARCH64)
 //  * Author    : Alexander (Rouse_) Bagel
 //  * Copyright : © Fangorn Wizards Lab 1998 - 2025.
-//  * Version   : 1.4
+//  * Version   : 1.5
 //  * Home Page : http://rouse.drkb.ru
 //  * Home Blog : http://alexander-bagel.blogspot.ru
 //  ****************************************************************************
@@ -30,14 +30,11 @@
 
 unit uni_profiler;
 
+{$UNDEF EXTENDED_RTL}
 {$IFDEF FPC}
-  {$MODE DELPHI}
-  {$IFDEF CPUX86}
-    {$ASMMODE INTEL}
-  {$ENDIF}
-  {$IFDEF CPUX64}
-    {$ASMMODE INTEL}
-  {$ENDIF}
+  {$I uni_profiler_fpc.inc}
+{$ELSE}
+  {$DEFINE EXTENDED_RTL}
 {$ENDIF}
 
 interface
@@ -63,12 +60,25 @@ type
   ///  MinTime, MaxTime, Total = 100 nanosecond resolution
   /// </summary>
   TProfileValue = record
-    MinTime, MaxTime, Total, Count: Int64;
+    // Net execution time of the procedure without taking into account the call of children under profiling
+    MinTimeClean, MaxTimeClean, TotalClean,
+    // Total time of the procedure taking into account the call of children under profiling
+    MinTime, MaxTime, Total,
+    Count: Int64;
   end;
 
   TStackParam = record
     Hash: THash;
-    StartTime: Int64;
+    StartTimeFull, StartTimeClean: Int64;
+  end;
+
+  TStackEx<T> = class(TStack<T>)
+  {$IFNDEF EXTENDED_RTL}
+  protected type
+    TArrayOfT = array of T;
+  public
+    property List: TArrayOfT read FItems;
+  {$ENDIF}
   end;
 
   TUniversalProfiler = class
@@ -84,7 +94,7 @@ type
     FSaveOnShutdown: Boolean;
     FValues: TDictionary<THash, TProfileValue>;
     FValueDescriptions: TDictionary<THash, string>;
-    FThreads: TObjectDictionary<TThreadID, TStack<TStackParam>>;
+    FThreads: TObjectDictionary<TThreadID, TStackEx<TStackParam>>;
     FFilePath: string;
     function GetNow: Int64;
     function InternalStart(const ASectionName: string; AHash: THash): THash;
@@ -158,7 +168,7 @@ begin
   FLock := TCriticalSection.Create;
   FValues := TDictionary<THash, TProfileValue>.Create;
   FValueDescriptions := TDictionary<THash, string>.Create;
-  FThreads := TObjectDictionary<TThreadID, TStack<TStackParam>>.Create([doOwnsValues]);
+  FThreads := TObjectDictionary<TThreadID, TStackEx<TStackParam>>.Create([doOwnsValues]);
   FSaveOnShutdown := True;
   FMaxNameLen := 4;
 end;
@@ -241,32 +251,54 @@ var
   I: Integer;
   SortRec: TSortRec;
   HashName: string;
+  NameLenIncValue: Integer;
 begin
   if MultiThread then FLock.Enter;
   try
     Result := TStringList.Create;
-    Result.Add(Format('%16s | %*s | %8s | %16s | %16s | %16s | %16s |', [
-      'Hash', FMaxNameLen, 'Name', 'Count', 'Total', 'Average', 'Max', 'Min']));
     Hashes := FValues.Keys.ToArray;
     List := TList<TSortRec>.Create(TComparer<TSortRec>.Construct({$IFDEF FPC}@{$ENDIF}ProfilerCompare));
     try
+      NameLenIncValue := 0;
       for I := 0 to Length(Hashes) - 1 do
       begin
         SortRec.Hash := Hashes[I];
         FValues.TryGetValue(SortRec.Hash, SortRec.Value);
+        if SortRec.Value.Total <> SortRec.Value.TotalClean then
+          NameLenIncValue := 8;
         List.Add(SortRec);
       end;
+      Result.Add(Format('%16s | %*s | %8s | %16s | %16s | %16s | %16s |', [
+        'Hash', FMaxNameLen + NameLenIncValue, 'Name', 'Count', 'Total', 'Average', 'Max', 'Min']));
       List.Sort;
       for SortRec in List do
       begin
         FValueDescriptions.TryGetValue(SortRec.Hash, HashName);
-        Result.Add(Format(
-          '%16p | %*s | %8d | %16.6f | %16.6f | %16.6f | %16.6f |', [
-          SortRec.Hash, FMaxNameLen, HashName, SortRec.Value.Count,
-          SortRec.Value.Total / Frequency,
-          SortRec.Value.Total / SortRec.Value.Count / Frequency,
-          SortRec.Value.MaxTime / Frequency,
-          SortRec.Value.MinTime / Frequency]));
+        if SortRec.Value.Total <> SortRec.Value.TotalClean then
+        begin
+          Result.Add(Format(
+            '%16p | %*s | %8d | %16.6f | %16.6f | %16.6f | %16.6f |', [
+            SortRec.Hash, FMaxNameLen + 8, HashName + ' (Full)', SortRec.Value.Count,
+            SortRec.Value.Total / Frequency,
+            SortRec.Value.Total / SortRec.Value.Count / Frequency,
+            SortRec.Value.MaxTime / Frequency,
+            SortRec.Value.MinTime / Frequency]));
+          Result.Add(Format(
+            '%16s | %*s | %8d | %16.6f | %16.6f | %16.6f | %16.6f |', [
+            '', FMaxNameLen + 8, HashName + ' (Clean)', SortRec.Value.Count,
+            SortRec.Value.TotalClean / Frequency,
+            SortRec.Value.TotalClean / SortRec.Value.Count / Frequency,
+            SortRec.Value.MaxTimeClean / Frequency,
+            SortRec.Value.MinTimeClean / Frequency]));
+        end
+        else
+          Result.Add(Format(
+            '%16p | %*s | %8d | %16.6f | %16.6f | %16.6f | %16.6f |', [
+            SortRec.Hash, FMaxNameLen + NameLenIncValue, HashName, SortRec.Value.Count,
+            SortRec.Value.Total / Frequency,
+            SortRec.Value.Total / SortRec.Value.Count / Frequency,
+            SortRec.Value.MaxTime / Frequency,
+            SortRec.Value.MinTime / Frequency]));
       end;
     finally
       List.Free;
@@ -282,7 +314,7 @@ var
   ProfileValue: TProfileValue;
   PresentSectionName: string;
   ThreadID: TThreadID;
-  ThreadStack: TStack<TStackParam>;
+  ThreadStack: TStackEx<TStackParam>;
   StackParam: TStackParam;
 begin
   if MultiThread then FLock.Enter;
@@ -297,11 +329,12 @@ begin
     ThreadID := GetCurrentThreadId;
     if not FThreads.TryGetValue(ThreadID, ThreadStack) then
     begin
-      ThreadStack := TStack<TStackParam>.Create;
+      ThreadStack := TStackEx<TStackParam>.Create;
       FThreads.Add(ThreadID, ThreadStack);
     end;
     Result := StackParam.Hash;
-    StackParam.StartTime := GetNow;
+    StackParam.StartTimeFull := GetNow;
+    StackParam.StartTimeClean := StackParam.StartTimeFull;
     ThreadStack.Push(StackParam);
   finally
     if MultiThread then FLock.Leave;
@@ -338,8 +371,8 @@ end;
 function TUniversalProfiler.Start(const ASectionName: string): THash;  assembler; {$IFDEF FPC}nostackframe;{$ENDIF}
 asm
   {$IFDEF CPUAARCH64}
-  mov x2, x30
-  b InternalStart
+    mov x2, x30
+    b InternalStart
   {$ENDIF}
 
   {$IFDEF CPUX86}
@@ -359,15 +392,17 @@ asm
     {$ENDIF}
     jmp InternalStart
   {$ENDIF}
+
 end;
 
 procedure TUniversalProfiler.Stop;
 var
-  StopTime: Int64;
+  StopTime, StopTimeClean, StopTimeFull: Int64;
   ThreadID: TThreadID;
-  ThreadStack: TStack<TStackParam>;
+  ThreadStack: TStackEx<TStackParam>;
   StackParam: TStackParam;
   ProfileValue: TProfileValue;
+  Idx: Integer;
 begin
   StopTime := GetNow;
   if MultiThread then FLock.Enter;
@@ -376,15 +411,29 @@ begin
     if not FThreads.TryGetValue(ThreadID, ThreadStack) then Exit;
     if ThreadStack.Count = 0 then Exit;
     StackParam := ThreadStack.Pop;
-    Dec(StopTime, StackParam.StartTime);
+
+    StopTimeFull := StopTime - StackParam.StartTimeFull;
     if not FValues.TryGetValue(StackParam.Hash, ProfileValue) then Exit;
     if ProfileValue.MinTime = 0 then
-      ProfileValue.MinTime := StopTime
+      ProfileValue.MinTime := StopTimeFull
     else
-      ProfileValue.MinTime := Min(StopTime, ProfileValue.MinTime);
-    ProfileValue.MaxTime := Max(StopTime, ProfileValue.MaxTime);
-    Inc(ProfileValue.Total, StopTime);
+      ProfileValue.MinTime := Min(StopTimeFull, ProfileValue.MinTime);
+    ProfileValue.MaxTime := Max(StopTimeFull, ProfileValue.MaxTime);
+    Inc(ProfileValue.Total, StopTimeFull);
+
+    StopTimeClean := StopTime - StackParam.StartTimeClean;
+    if ProfileValue.MinTimeClean = 0 then
+      ProfileValue.MinTimeClean := StopTimeClean
+    else
+      ProfileValue.MinTimeClean := Min(StopTimeClean, ProfileValue.MinTimeClean);
+    ProfileValue.MaxTimeClean := Max(StopTimeClean, ProfileValue.MaxTimeClean);
+    Inc(ProfileValue.TotalClean, StopTimeClean);
+
     Inc(ProfileValue.Count);
+    Idx := ThreadStack.Count - 1;
+    if Idx >= 0 then
+      Inc(ThreadStack.List[Idx].StartTimeClean, StopTimeFull);
+
     FValues.AddOrSetValue(StackParam.Hash, ProfileValue);
   finally
     if MultiThread then FLock.Leave;

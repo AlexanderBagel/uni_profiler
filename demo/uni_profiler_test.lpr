@@ -7,11 +7,13 @@ uses
   cthreads,
   {$ENDIF}
   SysUtils,
-  Unit1;
+  Unit1,
+  Unit2;
 
 begin
   try
     StartTest;
+    StartTest2;
   except
     on E: Exception do
       Writeln(E.ClassName, ': ', E.Message);
