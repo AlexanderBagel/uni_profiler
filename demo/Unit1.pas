@@ -33,7 +33,11 @@ begin
   if Value = 0 then
     Result := 1
   else
+    // Because of the large value chosen for load emulation,
+    // there will be Integer Overflow here
+    {$Q-}
     Result := Value * CalcFactorial(Value - 1);
+    {$Q+}
 end;
 
 procedure TThreadForProfiling.Execute;
