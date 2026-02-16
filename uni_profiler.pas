@@ -7,8 +7,8 @@
 //  *           : Supported operating systems: Windows/Linux.
 //  *           : Supported CPUs: Intel x86_64, ARM (AARCH64)
 //  * Author    : Alexander (Rouse_) Bagel
-//  * Copyright : © Fangorn Wizards Lab 1998 - 2025.
-//  * Version   : 1.5
+//  * Copyright : © Fangorn Wizards Lab 1998 - 2026.
+//  * Version   : 1.6
 //  * Home Page : http://rouse.drkb.ru
 //  * Home Blog : http://alexander-bagel.blogspot.ru
 //  ****************************************************************************
@@ -134,6 +134,9 @@ implementation
 
 uses
   Math;
+
+  // Direct call to libc with a gateway in VDSO
+  function clock_gettime(clk_id : clockid_t; tp: ptimespec): cint; cdecl; external name 'clock_gettime';
 
 function uprof: TUniversalProfiler;
 begin
@@ -392,7 +395,6 @@ asm
     {$ENDIF}
     jmp InternalStart
   {$ENDIF}
-
 end;
 
 procedure TUniversalProfiler.Stop;
