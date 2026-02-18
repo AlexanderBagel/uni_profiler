@@ -135,8 +135,11 @@ implementation
 uses
   Math;
 
+  {$IFDEF LINUX}
+
   // Direct call to libc with a gateway in VDSO
   function clock_gettime(clk_id : clockid_t; tp: ptimespec): cint; cdecl; external name 'clock_gettime';
+  {$ENDIF}
 
 function uprof: TUniversalProfiler;
 begin
